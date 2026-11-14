@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Venture e IPO – {{ nome }}</title>
+{% if plotly_inline %}<script>{{ plotly_inline | safe }}</script>{% else %}<script src="{{ plotly_cdn }}"></script>{% endif %}
+<style>
+  :root { --blu: #1f4e79; --grigio: #595959; --chiaro: #f2f5f9; }
+  body { font-family: "Segoe UI", Helvetica, Arial, sans-serif; color: #222; max-width: 980px;
+         margin: 0 auto; padding: 32px 16px 60px; line-height: 1.5; background: #fff; }
+  header { border-bottom: 3px solid var(--blu); padding-bottom: 12px; margin-bottom: 24px; }
+  h1 { color: var(--blu); margin: 0 0 4px; font-size: 1.7rem; }
+  h2 { color: var(--blu); font-size: 1.2rem; margin-top: 36px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+  h3 { font-size: 1rem; margin: 22px 0 6px; }
+  .sub { color: var(--grigio); font-size: .95rem; }
+  .kpi { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 16px 0; }
+  .kpi div { background: var(--chiaro); border-radius: 8px; padding: 12px 14px; }
+  .kpi b { display: block; font-size: 1.45rem; color: var(--blu); }
+  .kpi span { font-size: .8rem; color: var(--grigio); text-transform: uppercase; letter-spacing: .03em; }
+  .esito { border-left: 5px solid; padding: 12px 16px; border-radius: 4px; margin: 16px 0; }
+  .esito.ok { border-color: #0ca30c; background: #eef8ee; }
+  .esito.attenzione { border-color: #fab219; background: #fff8e8; }
+  .esito.ko { border-color: #d03b3b; background: #fcefef; }
+  .esito b::before { margin-right: 6px; }
+  .esito.ok b::before { content: "✓"; color: #0ca30c; }
+  .esito.attenzione b::before { content: "!"; color: #b07800; }
+  .esito.ko b::before { content: "✕"; color: #d03b3b; }
+  .due { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; margin: 10px 0; }
+  th, td { padding: 7px 10px; text-align: right; border-bottom: 1px solid #e5e5e5; }
+  th:first-child, td:first-child { text-align: left; }
+  th { background: var(--blu); color: #fff; font-weight: 600; }
+  tr:nth-child(even) td { background: #fafbfc; }
+  tr.forte td { font-weight: 600; }
+  td.neg { color: #c0392b; } td.pos { color: #1e7d32; }
+  .scroll { overflow-x: auto; }
+  .scroll table { white-space: nowrap; }
+  .grafico { margin: 14px 0; overflow: hidden; }
+  .note { font-size: .8rem; color: var(--grigio); background: var(--chiaro); padding: 12px 14px; border-radius: 6px; }
+  ul { padding-left: 20px; }
+  @media print { .grafico { break-inside: avoid; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Dalla start-up alla quotazione</h1>
+  <div class="sub">Cap table, waterfall, valutazione, portafoglio angel, fondo di venture capital e analisi delle IPO ·
+    caso: <b>{{ nome }}</b> · {{ today }}</div>
+</header>
+
+<h2>Sintesi</h2>
+<div class="kpi">
+  {% for label, value in kpi %}<div><span>{{ label }}</span><b>{{ value }}</b></div>{% endfor %}
+</div>
+<p>Il report segue il percorso di un investimento in una start-up, dalla prima firma di un business angel fino
+all'eventuale quotazione. Risponde a quattro domande: <b>chi riceve cosa</b> quando la società viene venduta;
+<b>quanto vale</b> oggi una società senza utili; <b>quante start-up</b> servono per non perdere capitale; e
+<b>se l'abbondanza di capitale privato tiene le aziende lontane dalla borsa</b>, la domanda di partenza della tesi da
+cui nasce l'ultima sezione.</p>
+
+<!-- ======================================================================= -->
+<h2>1. La start-up: round, diluizione e cap table</h2>
+<div class="scroll"><table>
+  <tr><th>Round</th><th>Pre-money</th><th>Investimento</th><th>SAFE convertiti</th><th>Post-money</th><th>Prezzo per azione</th><th>Pool a carico dei soci</th><th>Pre-money effettivo</th></tr>
+  {% for r in rounds %}<tr><td>{{ r.nome }}</td><td>{{ r.pre }}</td><td>{{ r.inv }}</td><td>{{ r.safe }}</td><td>{{ r.post }}</td><td>{{ r.prezzo }}</td><td>{{ r.pool }}</td><td>{{ r.eff }}</td></tr>{% endfor %}
+</table></div>
+<p>Il <b>pre-money effettivo</b> è quello che resta ai soci esistenti dopo aver pagato l'ampliamento dell'option pool
+chiesto dagli investitori (l'<i>option pool shuffle</i>): il pool entra nel pre-money, quindi lo pagano i fondatori.
+I SAFE sono post-money: al cap l'investitore ottiene la quota pari a importo diviso cap del capitale prima del round.</p>
+<div class="grafico">{{ grafici.diluizione | safe }}</div>
+<div class="due">
+<div><h3>Libro soci dopo l'ultimo round</h3>
+<table><tr><th>Titolare</th><th>Quota fully diluted</th><th>Investito</th></tr>
+{% for r in libro %}<tr><td>{{ r.nome }}</td><td>{{ r.quota }}</td><td>{{ r.inv }}</td></tr>{% endfor %}</table></div>
+<div><h3>Classi di azioni</h3>
+<table><tr><th>Classe</th><th>Preference</th><th>Tipo</th><th>Seniority</th><th>Converte sopra</th></tr>
+{% for c in classi %}<tr><td>{{ c.nome }}</td><td>{{ c.pref }}</td><td>{{ c.tipo }}</td><td>{{ c.seniority }}</td><td>{{ c.soglia }}</td></tr>{% endfor %}</table>
+<p class="sub">"Converte sopra": il valore di exit oltre il quale la classe rinuncia alla preference e converte in
+ordinarie, perché le conviene.</p></div>
+</div>
+
+<h2>2. Chi riceve cosa all'exit: il waterfall</h2>
+<p>Con le liquidation preference gli investitori recuperano prima il capitale, e solo dopo il resto si divide in
+proporzione alle azioni. In una vendita modesta i fondatori possono ricevere molto meno della loro quota, o niente.</p>
+<div class="grafico">{{ grafici.waterfall | safe }}</div>
+<div class="grafico">{{ grafici.quota_proventi | safe }}</div>
+<table><tr><th>Scenario</th><th>Probabilità</th><th>Valore di exit</th><th>Anni</th><th>Ai fondatori</th><th>Quota dei fondatori</th><th>Multiplo {{ investitore }}</th></tr>
+{% for s in scenari %}<tr><td>{{ s.nome }}</td><td>{{ s.prob }}</td><td>{{ s.valore }}</td><td>{{ s.anni }}</td><td>{{ s.fond }}</td><td>{{ s.fond_q }}</td><td>{{ s.inv }}</td></tr>{% endfor %}</table>
+<p class="sub">I fondatori possiedono il {{ q_fond }} delle azioni: la colonna "Quota dei fondatori" mostra quanto
+ricevono davvero in ogni scenario.</p>
+
+<h2>3. Quanto vale oggi: metodo VC e First Chicago</h2>
+<div class="due">
+<div><h3>Metodo VC</h3>
+<p>L'investitore parte dal valore di exit atteso ({{ vc.exit }}), lo divide per il multiplo che richiede
+({{ vc.mult }}, cioè il rendimento obiettivo sugli anni di attesa) e lo riduce per la diluizione dei round futuri
+(ne resta il {{ vc.rit }}).</p>
+<table><tr><th>Voce</th><th>Valore</th></tr>
+<tr><td>Investimento</td><td>{{ vc.inv }}</td></tr><tr><td>Post-money</td><td>{{ vc.post }}</td></tr>
+<tr><td>Pre-money</td><td>{{ vc.pre }}</td></tr><tr><td>Quota da chiedere oggi</td><td>{{ vc.quota }}</td></tr>
+<tr><td>Quota all'exit, dopo la diluizione</td><td>{{ vc.quota_exit }}</td></tr></table></div>
+<div><h3>Pre-money al variare delle ipotesi</h3>
+<div class="scroll"><table><tr><th>Multiplo \ ritenzione</th>{% for c in sens.colonne %}<th>{{ c }}</th>{% endfor %}</tr>
+{% for r in sens.righe %}<tr><td>{{ r.m }}</td>{% for v in r.v %}<td>{{ v }}</td>{% endfor %}</tr>{% endfor %}</table></div></div>
+</div>
+<h3>First Chicago: la media pesata degli scenari</h3>
+<table><tr><th>Scenario</th><th>Probabilità</th><th>Valore di exit</th><th>Anni</th><th>Valore attuale</th><th>Contributo</th></tr>
+{% for s in fc %}<tr><td>{{ s.nome }}</td><td>{{ s.prob }}</td><td>{{ s.valore }}</td><td>{{ s.anni }}</td><td>{{ s.vp }}</td><td>{{ s.contr }}</td></tr>{% endfor %}
+<tr class="forte"><td>Valore oggi</td><td></td><td></td><td></td><td></td><td>{{ valore_fc }}</td></tr></table>
+<p class="sub">Valori di exit attualizzati al {{ tasso_fc }} annuo, il tasso tipico del venture capital, che sconta
+anche l'illiquidità.</p>
+
+<!-- ======================================================================= -->
+<h2>4. Il portafoglio dell'angel: quante start-up servono</h2>
+<p>I rendimenti delle start-up seguono una <b>legge di potenza</b>: in questo modello il miglior 10% degli
+investimenti produce il {{ conc["Miglior 10%"] }} dei proventi e il miglior 1% il {{ conc["Miglior 1%"] }}. Il
+multiplo atteso di una singola start-up è {{ media_singola }}, ma il risultato tipico è molto più basso, perché la
+media è trainata da pochi casi eccezionali. Diversificare non alza il rendimento atteso: riduce la probabilità di
+mancare l'unico caso che fa il risultato.</p>
+<div class="grafico">{{ grafici.portafogli | safe }}</div>
+<div class="grafico">{{ grafici.distribuzioni | safe }}</div>
+<div class="grafico">{{ grafici.concentrazione | safe }}</div>
+<div class="scroll"><table><tr><th>Start-up</th><th>Multiplo medio</th><th>Multiplo mediano</th><th>Prob. di perdita</th><th>Prob. almeno 2x</th><th>5° percentile</th><th>95° percentile</th></tr>
+{% for r in port %}<tr><td>{{ r.n }}</td><td>{{ r.media }}</td><td>{{ r.mediana }}</td><td>{{ r.perdita }}</td><td>{{ r.due }}</td><td>{{ r.p5 }}</td><td>{{ r.p95 }}</td></tr>{% endfor %}</table></div>
+<h3>Riserva per i follow-on</h3>
+<p>Con 20 start-up, tenere il 40% del capitale per reinvestire in quelle che raccolgono un round successivo conviene
+solo se il prezzo del nuovo round (lo <i>step-up</i>) non si mangia il vantaggio di sapere quali vanno bene.</p>
+<table><tr><th>Ipotesi</th><th>Mediano senza riserva</th><th>Mediano con riserva</th><th>Medio con riserva</th><th>Prob. perdita con riserva</th></tr>
+{% for r in follow %}<tr><td>{{ r.nome }}</td><td>{{ r.med_senza }}</td><td>{{ r.med_con }}</td><td>{{ r.media_con }}</td><td>{{ r.perd_con }}</td></tr>{% endfor %}</table>
+
+<!-- ======================================================================= -->
+<h2>5. Investire tramite un fondo di venture capital</h2>
+<p>Il fondo richiama il capitale nei primi anni e lo restituisce dopo: il flusso netto cumulato dell'investitore
+scende fino a −{{ fondo.minimo }} del commitment e torna positivo solo nell'anno {{ fondo.pareggio }}. È la
+<b>J-curve</b>. Flussi secondo il modello di Takahashi e Alexander.</p>
+<div class="grafico">{{ grafici.jcurve | safe }}</div>
+<div class="due">
+<div><table><tr><th>Scenario di performance</th><th>TVPI</th><th>DPI</th><th>TIR</th></tr>
+{% for r in fondi_scenari %}<tr><td>{{ r.nome }}</td><td>{{ r.tvpi }}</td><td>{{ r.dpi }}</td><td>{{ r.tir }}</td></tr>{% endfor %}</table>
+<p class="sub">Caso centrale: TVPI {{ fondo.tvpi }}, TIR {{ fondo.tir }}, PME di Kaplan e Schoar {{ fondo.pme }} contro
+un indice simulato (sopra 1 il fondo batte la borsa con gli stessi tempi dei flussi).</p></div>
+<div><p>Per un patrimonio di {{ piano.pat }} con un obiettivo del {{ piano.obiettivo }} in venture capital, il piano
+richiede un commitment di {{ piano.c0 }} il primo anno, che cresce con il patrimonio. L'obiettivo è raggiunto
+{% if piano.anno %}intorno all'anno {{ piano.anno }}{% else %}oltre l'orizzonte del piano{% endif %}, e a regime gli
+impegni totali (NAV più non richiamato) valgono il {{ piano.impegni }} del patrimonio: è la liquidità da tenere
+pronta per i richiami.</p></div>
+</div>
+<div class="grafico">{{ grafici.piano | safe }}</div>
+
+<!-- ======================================================================= -->
+<h2>6. IPO e private market: la tesi, replicata e sviluppata</h2>
+<p>La tesi di laurea magistrale da cui nasce questa sezione (USI, Banking &amp; Finance, 2019) chiedeva se la crescita
+del venture capital e del private equity avesse cambiato il mercato delle IPO, in Europa occidentale e negli Stati
+Uniti. Le regressioni semplici della tesi davano R² bassi su 20 anni e più alti su 10, e la conclusione indicava come
+passo successivo una regressione multivariata con i test F. Questa sezione fa quel passo, sul periodo {{ periodo }}.</p>
+{% if demo %}<div class="esito attenzione"><b>Dati dimostrativi.</b> Le serie e il campione di IPO di questo report
+sono sintetici: servono a mostrare il metodo e non sono risultati sul mercato reale. Con un CSV di dati reali
+(per esempio un export Bloomberg) le stesse analisi girano senza modifiche.</div>{% endif %}
+<div class="grafico">{{ grafici.ipo_privato | safe }}</div>
+
+<h3>Passo 1: la replica delle regressioni semplici</h3>
+<div class="grafico">{{ grafici.replica | safe }}</div>
+<div class="scroll"><table><tr><th>Regione</th><th>Finestra</th><th>Modello</th><th>Oss.</th><th>Pendenza</th><th>p-value</th><th>R²</th></tr>
+{% for r in replica %}<tr><td>{{ r.reg }}</td><td>{{ r.fin }}</td><td>{{ r.mod }}</td><td>{{ r.n }}</td><td>{{ r.pend }}</td><td>{{ r.p }}</td><td>{{ r.r2 }}</td></tr>{% endfor %}</table></div>
+<p>Una regressione semplice mescola due effetti: in un mercato caldo crescono insieme le IPO e il capitale privato,
+quindi il legame sembra positivo anche se il capitale privato sottrae aziende alla borsa. Serve tenere ferme le
+condizioni di mercato.</p>
+
+<h3>Passo 2: la regressione multivariata</h3>
+<p>Variabile dipendente: logaritmo del numero di IPO. Controlli: valutazioni di borsa, volatilità, tasso a 10 anni.
+L'effetto del capitale privato può cambiare dal 2008. Errori standard di Newey-West.</p>
+<div class="due">
+{% for reg, righe in multiv.items() %}<div><h3>{{ reg }} (R² corretto {{ r2[reg] }})</h3>
+<table><tr><th>Variabile</th><th>Coeff.</th><th>t</th><th>p-value</th></tr>
+{% for r in righe %}<tr{% if r.sig %} class="forte"{% endif %}><td>{{ r.nome }}</td><td>{{ r.coef }}</td><td>{{ r.t }}</td><td>{{ r.p }}</td></tr>{% endfor %}</table></div>{% endfor %}
+</div>
+<div class="grafico">{{ grafici.effetto | safe }}</div>
+
+<h3>Passo 3: i test F e il test di Chow</h3>
+<div class="scroll"><table><tr><th>Regione</th><th>F: il privato conta</th><th>p-value</th><th>R² con / senza privato</th><th>F: l'effetto cambia dal 2008</th><th>p-value</th><th>Effetto prima</th><th>Effetto dopo</th><th>Chow 2008</th><th>p-value</th><th>Rottura più forte</th></tr>
+{% for t in testf %}<tr><td>{{ t.reg }}</td><td>{{ t.f }}</td><td>{{ t.p }}</td><td>{{ t.r2_con }} / {{ t.r2_senza }}</td><td>{{ t.f2 }}</td><td>{{ t.p2 }}</td><td>{{ t.prima }}</td><td>{{ t.dopo }}</td><td>{{ t.chow }}</td><td>{{ t.chow_p }}</td><td>{{ t.max }}</td></tr>{% endfor %}</table></div>
+<p class="sub">L'effetto è un'elasticità: +0,25 vuol dire che un aumento del 10% del capitale privato si associa a
+circa il 2,5% di IPO in più. "Rottura più forte" è l'anno con la F di Chow più alta.</p>
+<div class="grafico">{{ grafici.chow | safe }}</div>
+
+<h3>Passo 4: le aziende restano private più a lungo?</h3>
+<div class="grafico">{{ grafici.eta | safe }}</div>
+<div><table><tr><th>Regione</th><th>Anni in più per decennio</th><th>Età media fino al 2007</th><th>Età media dal 2008</th></tr>
+{% for r in eta %}<tr><td>{{ r.reg }}</td><td>{{ r.dec }}</td><td>{{ r.prima }}</td><td>{{ r.dopo }}</td></tr>{% endfor %}</table></div>
+
+{% if back %}
+<h3>Passo 5: le IPO con VC o PE alle spalle sono diverse?</h3>
+<p>Campione di {{ back.n }} IPO. L'<b>underpricing</b> è il rialzo del primo giorno rispetto al prezzo di offerta:
+denaro lasciato sul tavolo dalla società. Il <b>rendimento a 3 anni</b> è misurato rispetto al mercato (buy-and-hold).</p>
+<div class="grafico">{{ grafici.backing | safe }}</div>
+<div class="scroll"><table><tr><th>Regione</th><th>Backing</th><th>IPO</th><th>Underpricing medio</th><th>Rend. a 3 anni vs mercato</th><th>Sotto il mercato</th><th>Età mediana</th></tr>
+{% for r in back.righe %}<tr><td>{{ r.reg }}</td><td>{{ r.b }}</td><td>{{ r.n }}</td><td>{{ r.up }}</td><td>{{ r.bhar }}</td><td>{{ r.sotto }}</td><td>{{ r.eta }}</td></tr>{% endfor %}</table></div>
+<div class="due">
+<div><table><tr><th>Regione</th><th>Confronto</th><th>Δ underpricing</th><th>p</th><th>Δ rend. 3 anni</th><th>p</th></tr>
+{% for r in back.test %}<tr><td>{{ r.reg }}</td><td>{{ r.conf }}</td><td>{{ r.d_up }}</td><td>{{ r.p_up }}</td><td>{{ r.d_bhar }}</td><td>{{ r.p_bhar }}</td></tr>{% endfor %}</table>
+<p class="sub">Test t di Welch rispetto alle IPO senza VC o PE.</p></div>
+<div><table><tr><th>Underpricing: regressione</th><th>Effetto</th><th>t</th><th>p</th></tr>
+{% for r in back.reg %}<tr><td>{{ r.nome }}</td><td>{{ r.coef }}</td><td>{{ r.t }}</td><td>{{ r.p }}</td></tr>{% endfor %}</table>
+<p class="sub">Con effetti fissi per anno ed errori robusti.</p></div>
+</div>
+{% endif %}
+
+<h2>Note metodologiche</h2>
+<div class="note">
+<p>Cap table fully diluted, con option pool considerato interamente assegnato. Waterfall con preference per
+seniority, pari passu a parità di seniority e scelta di conversione in equilibrio per ogni classe. Rendimenti delle
+singole start-up: mistura di una Beta per le perdite e di una Pareto troncata per i successi, con parametri
+modificabili. Flussi del fondo: modello di Takahashi e Alexander (2002); PME di Kaplan e Schoar (2005). Regressioni
+OLS con errori di Newey-West (2 ritardi) per le serie annuali ed errori robusti HC1 per il campione di IPO; test di
+Chow con i soli controlli e il capitale privato.</p>
+{% if demo %}<p><b>Tutti i dati di questo report sono sintetici e dimostrativi: la start-up, gli investitori, le
+serie storiche e le IPO sono inventati.</b></p>{% endif %}
+<p>Questo documento ha scopo illustrativo e non costituisce consulenza finanziaria o raccomandazione di
+investimento. I risultati simulati non sono indicativi di quelli futuri.</p>
+</div>
+</body>
+</html>

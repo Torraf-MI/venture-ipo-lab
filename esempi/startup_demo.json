@@ -1,0 +1,87 @@
+{
+  "nome": "Start-up dimostrativa (software B2B)",
+  "fondatori": {
+    "Fondatrice A": 0.55,
+    "Fondatore B": 0.45
+  },
+  "pool_iniziale": 0.0,
+  "investitore": "Business angel",
+  "passaggi": [
+    {
+      "tipo": "safe",
+      "investitore": "Business angel",
+      "importo": 250000,
+      "cap": 3000000
+    },
+    {
+      "tipo": "round",
+      "nome": "Seed",
+      "pre_money": 4000000,
+      "investitori": {
+        "Fondo seed": 1200000
+      },
+      "pool_post": 0.1
+    },
+    {
+      "tipo": "round",
+      "nome": "Serie A",
+      "pre_money": 16000000,
+      "investitori": {
+        "Fondo VC A": 5000000,
+        "Fondo seed": 500000
+      },
+      "pool_post": 0.12
+    },
+    {
+      "tipo": "round",
+      "nome": "Serie B",
+      "pre_money": 55000000,
+      "investitori": {
+        "Fondo growth": 18000000
+      },
+      "pool_post": 0.12,
+      "multiplo_pref": 1.0,
+      "partecipante": true,
+      "cap_partecipazione": 3.0
+    }
+  ],
+  "exit": {
+    "tasso": 0.35,
+    "scenari": [
+      {
+        "nome": "Fallimento",
+        "probabilita": 0.35,
+        "valore_exit": 0,
+        "anni": 4
+      },
+      {
+        "nome": "Vendita in perdita",
+        "probabilita": 0.3,
+        "valore_exit": 40000000,
+        "anni": 5
+      },
+      {
+        "nome": "Acquisizione",
+        "probabilita": 0.25,
+        "valore_exit": 220000000,
+        "anni": 6
+      },
+      {
+        "nome": "Quotazione (IPO)",
+        "probabilita": 0.1,
+        "valore_exit": 900000000,
+        "anni": 7
+      }
+    ]
+  },
+  "valutazione_vc": {
+    "valore_exit": 220000000,
+    "investimento": 5500000,
+    "tir_target": 0.4,
+    "anni": 6,
+    "diluizioni_future": [
+      0.25,
+      0.15
+    ]
+  }
+}
