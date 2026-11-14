@@ -1,7 +1,8 @@
 # Venture IPO Lab
 
 **Dalla start-up alla quotazione, in Python: cap table e round, liquidation preference, valutazione, portafogli
-angel, fondi di venture capital e un'analisi empirica del legame tra private market e IPO.**
+angel, fondi di venture capital e un'analisi empirica, su dati pubblici reali, del legame tra private
+market e IPO.**
 
 Chi investe in una start-up deve rispondere a domande che un foglio Excel gestisce male. **Se la società viene
 venduta, quanto riceve davvero ciascun socio? Quanto vale oggi un'azienda senza utili? Quante start-up servono per
@@ -23,7 +24,7 @@ passo e aggiunge il resto della catena, dal round seed all'exit.
 
 I temi del progetto (venture capital, start-up dalla fase angel alla pre-IPO, accesso alla quotazione) sono gli
 stessi su cui mi confronto in **Akka Italy**. Il progetto non usa dati, operazioni o partecipazioni di Akka Italy:
-il caso, le serie e il campione di IPO dimostrativi sono sintetici.
+la start-up del caso dimostrativo è inventata, le serie sulle IPO sono dati pubblici citati con la fonte.
 
 ## Cosa fa
 
@@ -34,7 +35,8 @@ il caso, le serie e il campione di IPO dimostrativi sono sintetici.
 | **Valutazione** | **Metodo VC** (exit, multiplo o TIR obiettivo, diluizione futura) con tabella di sensitività, **First Chicago** sugli scenari di exit |
 | **Portafoglio angel** | Rendimenti a **legge di potenza** (Beta per le perdite, Pareto troncata per i successi), simulazione Monte Carlo per 1-100 start-up, probabilità di perdita e di trovare una *fund returner*, concentrazione dei proventi, riserva per i **follow-on** |
 | **Fondo VC** | Flussi di **Takahashi-Alexander** (Yale), **J-curve**, TVPI, DPI, RVPI, TIR, **PME di Kaplan-Schoar**, scenari per quartile, **piano di commitment** per arrivare a un'allocazione obiettivo |
-| **IPO e private market** | **Replica** delle regressioni della tesi; **regressione multivariata** con valutazioni di borsa, volatilità e tassi (errori di Newey-West); **test F** sul ruolo del private market; **test di Chow** e ricerca dell'anno di rottura; età alla quotazione; **underpricing** e rendimento a 3 anni delle IPO con e senza VC o PE |
+| **IPO e private market (dati reali)** | Serie pubbliche 1980-2025 su IPO negli Stati Uniti, condizioni di mercato e attività di VC e PE in USA ed Europa; **replica** delle regressioni della tesi; **regressione multivariata** con tassi, valutazioni, volatilità e rendimento di borsa (Newey-West); **test F**; **test di Chow** e **sup-F** di Quandt e Andrews; età alla quotazione; **underpricing**; la borsa come via d'uscita |
+| **Dati propri** | Le stesse analisi su un proprio export (per esempio Bloomberg, più regioni) e su un campione di singole IPO: underpricing e rendimento a 3 anni con e senza VC o PE |
 | **Report** | HTML in italiano con 14 grafici interattivi Plotly, tabelle e note di metodo |
 
 Regressioni con `statsmodels`, simulazioni con `numpy`, test con `scipy`, grafici `plotly`, report `jinja2`.
@@ -52,14 +54,16 @@ venture-ipo-lab --demo
 # Il proprio caso: fondatori, SAFE, round e scenari di exit in un file JSON
 venture-ipo-lab --caso esempi/startup_demo.json --patrimonio 2000000 --allocazione 0.05
 
-# Con dati reali sulle IPO (ad esempio un export Bloomberg) al posto di quelli sintetici
-venture-ipo-lab --demo --serie mie_serie.csv --ipo mie_ipo.csv --offline --grafici output/grafici
+# In più, le analisi su dati propri (qui i file di esempio, sintetici, con lo stesso formato di un export)
+venture-ipo-lab --demo --serie data/serie_esempio.csv --ipo data/ipo_esempio.csv --offline --grafici output/grafici
 ```
 
 Il report viene salvato in `output/report.html` (con `--offline` funziona anche senza connessione, con
 `--grafici cartella` salva anche i PNG). Un esempio già generato: [`docs/report_esempio.html`](docs/report_esempio.html).
 
-I formati dei CSV sono descritti in [`dati.py`](src/venture_ipo_lab/dati.py) e negli esempi in [`data/`](data/):
+Le serie pubbliche reali sono incluse nel pacchetto ([`dati_pubblici/`](src/venture_ipo_lab/dati_pubblici/), fonti
+e termini d'uso in [`FONTI.md`](src/venture_ipo_lab/dati_pubblici/FONTI.md)). I formati dei CSV per i dati propri
+sono descritti in [`dati.py`](src/venture_ipo_lab/dati.py) e negli esempi in [`data/`](data/):
 una riga per anno e regione per le serie (`anno, regione, ipo, ipo_raccolta, ipo_vc, ipo_pe, operazioni_private,
 capitale_privato, eta_mediana_ipo, tasso_10a, valutazione, volatilita`) e una riga per IPO per il campione
 (`anno, regione, backing, eta, raccolta, underpricing, rendimento_3a, mercato_3a`).
@@ -68,7 +72,7 @@ capitale_privato, eta_mediana_ipo, tasso_10a, valutazione, volatilita`) e una ri
 
 ```python
 from venture_ipo_lab import CapTable, distribuisci, metodo_vc, simula_portafogli, flussi_fondo, indicatori
-from venture_ipo_lab import genera_serie, prepara, ftest_privato, chow
+from venture_ipo_lab import empirico
 
 ct = CapTable.fondazione({"Fondatrice": 0.6, "Fondatore": 0.4})
 ct.safe("Business angel", 200_000, cap=2_500_000, sconto=0.2)
@@ -81,8 +85,9 @@ print(metodo_vc(150e6, 4e6, tir_target=0.40, anni=6, diluizioni_future=[0.2, 0.1
 print(simula_portafogli([5, 20, 50]))     # rischio di perdita e numero di start-up
 print(indicatori(flussi_fondo()))         # TVPI, DPI, TIR del fondo
 
-df = prepara(genera_serie(), "Europa occidentale")   # oppure carica_serie("file.csv")
-print(ftest_privato(df), chow(df))       # il private market conta? il legame cambia nel 2008?
+e = empirico.analizza()                   # dati pubblici reali 1980-2025
+print(e.tabella_tesi())                   # le regressioni semplici della tesi
+print(e.multivariata.tabella(), e.f_mercati_privati, e.chow_2008, e.rottura["anno"])
 ```
 
 Esempio completo in [`examples/esempio.py`](examples/esempio.py).
@@ -116,32 +121,38 @@ impegni non ancora richiamati valgono un altro 3% del patrimonio.
 
 ![J-curve](docs/img/jcurve.png)
 
-### IPO e private market (dati sintetici)
+### IPO e private market (dati pubblici reali)
 
-> Le serie e il campione di IPO qui sotto sono **sintetici**: generati con un modello che ha ordini di grandezza
-> simili alle statistiche pubbliche e relazioni note, per mostrare il metodo e tenere i test riproducibili. Non
-> sono risultati sul mercato reale. Con un CSV di dati veri le stesse analisi girano senza modifiche.
+![IPO negli Stati Uniti 1980-2025](docs/img/ipo_usa.png)
 
-![IPO e capitale privato](docs/img/ipo_privato.png)
+Negli anni Novanta gli Stati Uniti avevano in media 409 IPO l'anno, nell'ultimo decennio 116. Nello stesso tempo la
+quota di IPO con un investitore finanziario alle spalle (VC, growth o buyout) è salita dal 49% al 70%.
 
-**Passo 1, la replica.** Come nella tesi, la regressione semplice del numero di IPO sul numero di operazioni
-private ha un R² quasi nullo su 1998-2018 e più alto su 2008-2018 (0,54 negli Stati Uniti).
+**Passo 1, la replica.** Come nella tesi, l'attività di VC e PE da sola spiega poco il numero di IPO: sulle serie
+pubbliche 2014-2025 di Stati Uniti ed Europa gli R² delle regressioni semplici vanno da 0,04 a 0,18.
 
-![Replica della tesi](docs/img/replica.png)
+**Passo 2, la multivariata.** Sul 1991-2025 il logaritmo del numero di IPO dipende dalle condizioni di mercato
+(test F congiunto 24,3, p < 0,001; R² 0,60): pesano la volatilità e il rendimento di borsa dell'anno prima. La quota
+di IPO con VC o PE, a parità di mercato, non è significativa (p = 0,57): **i fondi non portano più aziende in
+borsa, cambiano chi ci arriva.**
 
-**Passo 2, la multivariata.** A parità di valutazioni di borsa, volatilità e tassi, l'effetto del capitale privato
-sulle IPO è positivo fino al 2007 (+0,25: crescono insieme) e diventa negativo dal 2008 (−0,47 negli Stati Uniti,
-−0,57 in Europa): più capitale privato, meno quotazioni.
+**Passo 3, la rottura.** Il test di Chow al 2008 rifiuta la stabilità del modello (F = 11,0, p < 0,001); cercando
+la data senza fissarla, il sup-F è massimo nel 2009 (12,4 contro un valore critico all'1% di 5,1).
 
-![Effetto prima e dopo il 2008](docs/img/effetto.png)
+![Ricerca della rottura strutturale](docs/img/supf.png)
 
-**Passo 3, i test.** Il test F rifiuta l'ipotesi che il private market non conti (F = 16,9 negli Stati Uniti e 45,1
-in Europa, p < 0,001), e il test di Chow conferma la rottura del 2008. **Passo 4:** l'età mediana alla quotazione
-cresce di circa 1,7 anni per decennio. **Passo 5:** le IPO con venture capital hanno più underpricing (+7 punti a
-parità di età, dimensione, regione e anno), quelle con private equity meno, ed entrambe fanno meglio delle IPO senza
-investitori professionali nei tre anni successivi.
+**Passo 4, le aziende restano private più a lungo.** L'età mediana alla quotazione passa da 8,0 anni (1980-2000) a
+11,3 anni (2001-2025), t = 6,6; per le IPO tecnologiche con VC da 6,3 a 9,7 anni.
 
-![IPO con e senza VC o PE](docs/img/backing.png)
+**Passo 5, underpricing.** Negli anni con più IPO sostenute da VC il primo giorno sale di più: 10 punti di quota VC
+valgono circa 2,5 punti di rendimento del primo giorno (p = 0,02), a parità di valutazioni, volatilità e bolla.
+
+**Passo 6, la borsa come via d'uscita.** In Europa le exit di PE avvenute con una IPO scendono dall'8,4% (2014)
+all'1,2% (2024); negli Stati Uniti le IPO con VC ogni 1.000 round di VC passano da 5,8 (2015) a 2,3 (2025).
+
+![La borsa come via d'uscita](docs/img/exit_borsa.png)
+
+Limiti: serie annuali e brevi, dati europei solo aggregati; i risultati sono associazioni, non nessi causali.
 
 ## Metodo
 
@@ -155,10 +166,11 @@ investitori professionali nei tre anni successivi.
   Pareto troncata su [1, 250] con indice 1,75 (media 1,18x). Parametri modificabili in `DistribuzioneRendimenti`.
 - **Fondo.** Takahashi e Alexander (2002): richiami come quota del non richiamato, distribuzioni `(t/L)^B` del NAV
   rivalutato. KS-PME di Kaplan e Schoar (2005). Piano di commitment a regime con patrimonio in crescita.
-- **IPO.** OLS del log del numero di IPO su log del capitale privato, log delle valutazioni, volatilità, tasso a 10
-  anni, dummy dal 2008 e interazione; errori di Newey-West con 2 ritardi. Test F annidato per il private market,
-  test di Chow con ricerca dell'anno di rottura. Underpricing con effetti fissi per anno ed errori HC1; confronti con
-  test t di Welch e Mann-Whitney.
+- **IPO, dati pubblici.** OLS del log del numero di IPO su Treasury a 10 anni, log del CAPE, VIX, rendimento
+  dell'S&P 500 dell'anno prima e quota di IPO con VC o PE (1991-2025), errori di Newey-West; test F robusti; test di
+  Chow al 2008; sup-F di Quandt e Andrews con trimming del 15% e valori critici di Andrews (1993).
+- **IPO, dati propri.** Pannello per regione con interazione dal 2008, test F annidato, ricerca della rottura;
+  campione di singole IPO con effetti fissi per anno ed errori HC1, test t di Welch e Mann-Whitney.
 
 ## Struttura
 
@@ -169,8 +181,10 @@ src/venture_ipo_lab/
 ├── valutazione.py   # metodo VC, First Chicago, sensitività
 ├── portafoglio.py   # legge di potenza, simulazioni, follow-on
 ├── fondo.py         # Takahashi-Alexander, J-curve, TVPI/DPI/PME, piano di commitment
-├── ipo.py           # replica della tesi, multivariata, test F e di Chow, underpricing
-├── dati.py          # dati dimostrativi e caricamento dei CSV
+├── empirico.py      # analisi sulle serie pubbliche reali (tesi, multivariata, Chow, sup-F, età, exit)
+├── dati_pubblici/   # serie pubbliche 1980-2025 e FONTI.md
+├── ipo.py           # analisi su dati propri (pannello per regione, singole IPO)
+├── dati.py          # formato e caricamento dei dati propri, dati di esempio sintetici
 ├── esempi.py        # caso dimostrativo e lettura dei casi JSON
 ├── report.py        # grafici e report HTML
 └── cli.py           # riga di comando
@@ -180,7 +194,7 @@ src/venture_ipo_lab/
 
 ```bash
 pip install -e ".[dev]"
-pytest -q          # 33 test: matematica dei round, waterfall, modelli, statistiche, report e CLI
+pytest -q          # 38 test: matematica dei round, waterfall, modelli, statistiche, report e CLI
 ruff check src tests
 ```
 
@@ -188,8 +202,8 @@ La CI di GitHub Actions esegue test e lint su Python 3.11, 3.12 e 3.13.
 
 ## Avvertenze
 
-Progetto dimostrativo a scopo didattico e di portfolio. Il caso, gli investitori, le serie storiche e le IPO del
-report di esempio sono inventati. Non costituisce consulenza finanziaria, legale o fiscale: i termini reali di un
+Progetto dimostrativo a scopo didattico e di portfolio. La start-up e gli investitori del caso dimostrativo sono
+inventati; le serie sulle IPO sono dati pubblici trascritti dalle fonti citate, che restano dei rispettivi editori. Non costituisce consulenza finanziaria, legale o fiscale: i termini reali di un
 investimento (patti parasociali, clausole anti-diluizione, vesting, fiscalità) vanno verificati caso per caso.
 
 ## Licenza

@@ -84,8 +84,20 @@ def test_cli_demo_e_caso_json(tmp_path, capsys):
     out = tmp_path / "r.html"
     assert main(["--demo", "--simulazioni", "1000", "--output", str(out)]) == 0
     html = out.read_text(encoding="utf-8")
-    assert "Dalla start-up alla quotazione" in html and "Dati dimostrativi" in html
+    assert "Dalla start-up alla quotazione" in html and "dati pubblici reali" in html
+    assert "Analisi su dati propri" not in html
     caso = tmp_path / "c.json"
     caso.write_text(json.dumps(CASO_DEMO), encoding="utf-8")
     assert main(["--caso", str(caso), "--simulazioni", "1000", "--output", str(tmp_path / "c.html")]) == 0
     assert "Report:" in capsys.readouterr().out
+
+
+def test_cli_con_pannello_e_campione(tmp_path):
+    s = genera_serie()
+    s.to_csv(tmp_path / "s.csv", index=False)
+    genera_ipo(s).to_csv(tmp_path / "i.csv", index=False)
+    out = tmp_path / "r.html"
+    assert main(["--demo", "--simulazioni", "1000", "--serie", str(tmp_path / "s.csv"), "--ipo",
+                 str(tmp_path / "i.csv"), "--output", str(out)]) == 0
+    html = out.read_text(encoding="utf-8")
+    assert "Analisi su dati propri" in html and "Campione di singole IPO" in html

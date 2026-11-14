@@ -14,7 +14,7 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from plotly.offline import get_plotlyjs, get_plotlyjs_version
 from plotly.subplots import make_subplots
 
-from . import dati, esempi, fondo, ipo, portafoglio, valutazione, waterfall
+from . import dati, empirico, esempi, fondo, ipo, portafoglio, valutazione, waterfall
 from .cap_table import CapTable
 
 BLU, ARANCIO, ACQUA, VIOLA = "#2a78d6", "#eb6834", "#1baf7a", "#8a5cd1"
@@ -60,21 +60,26 @@ class Analisi:
     scenari_fondo: pd.DataFrame
     piano: pd.DataFrame
     commitment: float
-    serie: pd.DataFrame
-    campione_ipo: pd.DataFrame
-    replica: pd.DataFrame
-    multivariate: dict[str, ipo.Regressione]
-    test_f: dict[str, pd.Series]
-    chow: dict[str, pd.Series]
-    ricerca: dict[str, pd.DataFrame]
-    eta: pd.DataFrame
-    backing: pd.DataFrame
-    test_underpricing: pd.DataFrame
-    test_bhar: pd.DataFrame
-    reg_underpricing: ipo.Regressione
+    empirico: empirico.AnalisiEmpirica  # dati pubblici reali, Stati Uniti ed Europa
     patrimonio: float
     allocazione: float
-    dati_dimostrativi: bool
+    # Analisi facoltative su dati propri (es. export Bloomberg a più regioni o campione di singole IPO)
+    serie: pd.DataFrame | None = None
+    campione_ipo: pd.DataFrame | None = None
+    replica: pd.DataFrame | None = None
+    multivariate: dict[str, ipo.Regressione] | None = None
+    test_f: dict[str, pd.Series] | None = None
+    chow: dict[str, pd.Series] | None = None
+    ricerca: dict[str, pd.DataFrame] | None = None
+    eta: pd.DataFrame | None = None
+    backing: pd.DataFrame | None = None
+    test_underpricing: pd.DataFrame | None = None
+    test_bhar: pd.DataFrame | None = None
+    reg_underpricing: ipo.Regressione | None = None
+
+    @property
+    def pannello(self) -> bool:
+        return self.serie is not None
 
 
 def analizza(
@@ -85,11 +90,9 @@ def analizza(
     allocazione: float = 0.10,
     simulazioni: int = 20_000,
 ) -> Analisi:
+    """Analisi completa. ``serie`` e ``campione_ipo`` sono dati propri facoltativi (vedi :mod:`.dati`): senza,
+    la parte sulle IPO usa solo le serie pubbliche reali del modulo :mod:`.empirico`."""
     caso = caso or esempi.CASO_DEMO
-    dimostrativi = serie is None
-    serie = dati.genera_serie() if serie is None else serie
-    if campione_ipo is None:
-        campione_ipo = dati.genera_ipo(serie) if dimostrativi else None
     ct = esempi.costruisci_cap_table(caso)
     post = ct.round_info[-1]["Post-money"]
     griglia = waterfall.tabella_exit(ct, np.linspace(0, 6 * post, 121))
@@ -117,24 +120,28 @@ def analizza(
                                     "Primo decile": 0.26})
     piano, c0 = fondo.piano_commitment(patrimonio, allocazione)
 
-    regioni = list(serie["regione"].unique())
-    prep = {r: ipo.prepara(serie, r) for r in regioni}
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        multiv = {r: ipo.multivariata(prep[r]) for r in regioni}
-        test_f = {r: ipo.ftest_privato(prep[r]) for r in regioni}
-        chow = {r: ipo.chow(prep[r]) for r in regioni}
-        ricerca = {r: ipo.ricerca_rottura(prep[r]) for r in regioni}
-    return Analisi(
-        caso, ct, griglia, multipli, fc, valore_fc, vc, sens, port, distribuzioni,
-        portafoglio.concentrazione(distr), follow, flussi, ind, sc_fondo, piano, c0, serie, campione_ipo,
-        ipo.replica_tesi(serie), multiv, test_f, chow, ricerca, ipo.eta_alla_quotazione(serie),
-        ipo.confronto_backing(campione_ipo) if campione_ipo is not None else None,
-        ipo.ttest_backing(campione_ipo) if campione_ipo is not None else None,
-        ipo.ttest_backing(campione_ipo, "bhar") if campione_ipo is not None else None,
-        ipo.regressione_underpricing(campione_ipo) if campione_ipo is not None else None,
-        patrimonio, allocazione, dimostrativi,
-    )
+        emp = empirico.analizza()
+        a = Analisi(caso, ct, griglia, multipli, fc, valore_fc, vc, sens, port, distribuzioni,
+                    portafoglio.concentrazione(distr), follow, flussi, ind, sc_fondo, piano, c0, emp,
+                    patrimonio, allocazione)
+        if serie is not None:
+            regioni = list(serie["regione"].unique())
+            prep = {r: ipo.prepara(serie, r) for r in regioni}
+            a.serie, a.replica = serie, ipo.replica_tesi(serie)
+            a.multivariate = {r: ipo.multivariata(prep[r]) for r in regioni}
+            a.test_f = {r: ipo.ftest_privato(prep[r]) for r in regioni}
+            a.chow = {r: ipo.chow(prep[r]) for r in regioni}
+            a.ricerca = {r: ipo.ricerca_rottura(prep[r]) for r in regioni}
+            a.eta = ipo.eta_alla_quotazione(serie)
+        if campione_ipo is not None:
+            a.campione_ipo = campione_ipo
+            a.backing = ipo.confronto_backing(campione_ipo)
+            a.test_underpricing = ipo.ttest_backing(campione_ipo)
+            a.test_bhar = ipo.ttest_backing(campione_ipo, "bhar")
+            a.reg_underpricing = ipo.regressione_underpricing(campione_ipo)
+    return a
 
 
 # --------------------------------------------------------------------------- #
@@ -333,12 +340,93 @@ def grafico_backing(a: Analisi) -> go.Figure:
     return _layout(fig, "IPO con e senza investitori professionali alle spalle", 420)
 
 
+# --------------------------------------------------------------------------- #
+# Grafici: IPO con dati pubblici reali
+# --------------------------------------------------------------------------- #
+def grafico_ipo_usa(a: Analisi) -> go.Figure:
+    d = a.empirico.dati.loc[1980:2025]
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_bar(x=d.index, y=d["ipo"] - d["ipo_sponsor_finanziario"], name="IPO senza VC o PE", marker_color=GRIGIO)
+    fig.add_bar(x=d.index, y=d["ipo_vc"], name="IPO con venture capital", marker_color=ARANCIO)
+    fig.add_bar(x=d.index, y=d["ipo_sponsor_finanziario"] - d["ipo_vc"], name="IPO con growth o buyout (PE)",
+                marker_color=BLU_SCURO)
+    fig.add_scatter(x=d.index, y=d["quota_sponsor"], name="Quota con VC o PE", line={"color": TESTO, "width": 2},
+                    secondary_y=True)
+    fig.update_layout(barmode="stack")
+    fig.add_vline(x=2007.5, line_dash="dot", line_color=ROSSO)
+    fig.update_yaxes(title_text="Numero di IPO", secondary_y=False)
+    fig.update_yaxes(title_text="Quota con VC o PE", tickformat=".0%", range=[0, 1], dtick=0.2, secondary_y=True,
+                     showgrid=False)
+    return _layout(fig, "Stati Uniti, 1980-2025: meno IPO, e sempre più spesso con VC o PE alle spalle", 460)
+
+
+def grafico_tesi_reale(a: Analisi) -> go.Figure:
+    t = a.empirico.tabella_tesi().iloc[::-1]
+    fig = go.Figure(go.Bar(y=t.index, x=t["R²"], orientation="h", marker_color=BLU_SCURO,
+                           text=[f"{v:.2f}".replace(".", ",") for v in t["R²"]], textposition="outside"))
+    fig.update_xaxes(range=[0, 1], title="R²")
+    fig = _layout(fig, "Le regressioni semplici della tesi, rifatte su dati pubblici recenti", 380)
+    fig.update_layout(margin={"l": 290})
+    return fig
+
+
+def grafico_supf(a: Analisi) -> go.Figure:
+    r = a.empirico.rottura
+    s = r["serie"]
+    fig = go.Figure(go.Scatter(x=s.index, y=s.values, mode="lines+markers", name="F di Chow",
+                               line={"color": BLU_SCURO, "width": 2.4}))
+    fig.add_hline(y=r["critico 1%"], line_dash="dash", line_color=ROSSO, annotation_text="Valore critico all'1%")
+    fig.add_hline(y=r["critico 5%"], line_dash="dot", line_color=GRIGIO, annotation_text="5%")
+    fig.update_xaxes(title="Anno di rottura ipotizzato", dtick=2)
+    fig.update_yaxes(title="F")
+    return _layout(fig, f"Dove si rompe il legame tra IPO e mercato: il massimo è nel {r['anno']}", 400)
+
+
+def grafico_eta_reale(a: Analisi) -> go.Figure:
+    d = a.empirico.dati.loc[1980:2025]
+    fig = go.Figure()
+    fig.add_scatter(x=d.index, y=d["eta_mediana"], name="Tutte le IPO", line={"color": BLU_SCURO, "width": 2.4})
+    fig.add_scatter(x=d.index, y=d["eta_mediana_vc_tech"], name="IPO tecnologiche con VC",
+                    line={"color": ARANCIO, "width": 2, "dash": "dash"})
+    fig.update_yaxes(title="Età mediana alla quotazione (anni)")
+    return _layout(fig, "Le aziende arrivano in borsa più tardi", 400)
+
+
+def grafico_underpricing_reale(a: Analisi) -> go.Figure:
+    d = a.empirico.dati.loc[1980:2025]
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_bar(x=d.index, y=d["rendimento_primo_giorno_medio"] / 100, name="Rendimento medio del primo giorno",
+                marker_color=ACQUA)
+    fig.add_scatter(x=d.index, y=d["quota_vc"], name="Quota di IPO con VC", line={"color": ARANCIO, "width": 2.2},
+                    secondary_y=True)
+    fig.update_yaxes(tickformat=".0%", title_text="Primo giorno", secondary_y=False)
+    fig.update_yaxes(tickformat=".0%", title_text="Quota con VC", range=[0, 1], dtick=0.2,
+                     secondary_y=True, showgrid=False)
+    return _layout(fig, "Underpricing: il denaro lasciato sul tavolo il primo giorno", 420)
+
+
+def grafico_exit_borsa(a: Analisi) -> go.Figure:
+    d = a.empirico.dati
+    eu = d["eur_quota_ipo_exit_pe"].dropna()
+    us = d["usa_ipo_vc_per_mille_round"].dropna()
+    fig = make_subplots(rows=1, cols=2, subplot_titles=["Europa: exit di PE avvenute con una IPO",
+                                                        "Stati Uniti: IPO con VC ogni 1.000 round di VC"])
+    fig.add_bar(x=eu.index, y=eu.values, marker_color=BLU_SCURO, showlegend=False, row=1, col=1)
+    fig.add_bar(x=us.index, y=us.values, marker_color=ARANCIO, showlegend=False, row=1, col=2)
+    fig.update_yaxes(tickformat=".0%", row=1, col=1)
+    return _layout(fig, "La borsa come via d'uscita si restringe", 400)
+
+
 def _disponibili(a: Analisi) -> dict:
     g = {"diluizione": grafico_diluizione, "waterfall": grafico_waterfall, "quota_proventi": grafico_quota_proventi,
          "portafogli": grafico_portafogli, "distribuzioni": grafico_distribuzioni,
          "concentrazione": grafico_concentrazione, "jcurve": grafico_jcurve, "piano": grafico_piano,
-         "ipo_privato": grafico_ipo_privato, "replica": grafico_replica, "effetto": grafico_effetto,
-         "chow": grafico_chow, "eta": grafico_eta}
+         "ipo_usa": grafico_ipo_usa, "tesi_reale": grafico_tesi_reale, "supf": grafico_supf,
+         "eta_reale": grafico_eta_reale, "underpricing_reale": grafico_underpricing_reale,
+         "exit_borsa": grafico_exit_borsa}
+    if a.pannello:
+        g.update({"ipo_privato": grafico_ipo_privato, "replica": grafico_replica, "effetto": grafico_effetto,
+                  "chow": grafico_chow, "eta": grafico_eta})
     if a.backing is not None:
         g["backing"] = grafico_backing
     return g
@@ -383,6 +471,68 @@ def _eur(x: float) -> str:
 
 def _p(x: float) -> str:
     return "< 0,001" if x < 0.001 else _num(x, 3)
+
+
+def _contesto_pannello(a: Analisi) -> tuple:
+    """Tabelle delle analisi su un pannello di dati propri (più regioni, formato di :mod:`.dati`)."""
+    rep = [{"reg": r["Regione"], "fin": r["Finestra"], "mod": r["Modello"], "n": r["Osservazioni"],
+            "pend": _num(r["Pendenza"], 3), "p": _p(r["p-value"]), "r2": _num(r["R²"])}
+           for _, r in a.replica.iterrows()]
+    multiv = {reg: [{"nome": k, "coef": _num(v["Coefficiente"], 3), "t": _num(v["t"]), "p": _p(v["p-value"]),
+                     "sig": v["p-value"] < 0.05} for k, v in m.tabella().iterrows()]
+              for reg, m in a.multivariate.items()}
+    r2 = {reg: _num(m.r2_corretto) for reg, m in a.multivariate.items()}
+    testf = [{"reg": reg, "f": _num(t["F (privato conta)"]), "p": _p(t["p-value (privato conta)"]),
+              "r2_con": _num(t["R² con privato"]), "r2_senza": _num(t["R² senza privato"]),
+              "f2": _num(t["F (effetto cambia dopo il 2008)"]), "p2": _p(t["p-value (effetto cambia)"]),
+              "prima": _num(t["Effetto prima del 2008"], 2, True), "dopo": _num(t["Effetto dopo il 2008"], 2, True),
+              "chow": _num(a.chow[reg]["F di Chow"]), "chow_p": _p(a.chow[reg]["p-value"]),
+              "max": int(a.ricerca[reg]["F di Chow"].idxmax())}
+             for reg, t in a.test_f.items()]
+    eta = [{"reg": reg, "dec": _num(r["Anni in più per decennio"], 1, True),
+            "prima": _num(r["Età media prima del 2008"], 1),
+            "dopo": _num(r["Età media dal 2008"], 1)} for reg, r in a.eta.iterrows()]
+    return rep, multiv, r2, testf, eta
+
+
+def _contesto_empirico(a: Analisi) -> dict:
+    e = a.empirico
+    tesi = [{"nome": n, "periodo": r["Periodo"], "n": int(r["Osservazioni"]), "coef": _num(r["Coefficiente"], 4),
+             "p": _p(r["p-value"]), "r2": _num(r["R²"])} for n, r in e.tabella_tesi().iterrows()]
+    nomi = {"const": "Costante", "treasury_10a": "Treasury a 10 anni (%)", "ln_cape": "Valutazioni di borsa (log CAPE)",
+            "vix": "Volatilità (VIX)", "sp500_anno_prima": "S&P 500 dell'anno prima (%)",
+            "quota_sponsor": "Quota di IPO con VC o PE", "dopo_2008": "Dal 2008", "quota_vc": "Quota di IPO con VC",
+            "bolla_dotcom": "Bolla 1999-2000", "tempo": "Tendenza (anni)"}
+
+    def righe(reg) -> list[dict]:
+        return [{"nome": nomi.get(k, k), "coef": _num(v["Coefficiente"], 3), "t": _num(v["t"]), "p": _p(v["p-value"]),
+                 "sig": v["p-value"] < 0.05} for k, v in reg.tabella().iterrows()]
+
+    d = e.dati
+    eu, us = d["eur_quota_ipo_exit_pe"].dropna(), d["usa_ipo_vc_per_mille_round"].dropna()
+    r = e.rottura
+    return {
+        "tesi": tesi, "r2_min": _num(e.tabella_tesi()["R²"].min()), "r2_max": _num(e.tabella_tesi()["R²"].max()),
+        "multi": righe(e.multivariata), "multi_r2": _num(e.multivariata.r2), "multi_n": e.multivariata.n,
+        "multi_periodo": f"{e.multivariata.campione[0]}-{e.multivariata.campione[1]}",
+        "f_contr": _num(e.f_controlli["F"], 1), "p_contr": _p(e.f_controlli["p-value"]),
+        "f_priv": _num(e.f_mercati_privati["F"]), "p_priv": _p(e.f_mercati_privati["p-value"]),
+        "chow": _num(e.chow_2008["F"], 1), "chow_p": _p(e.chow_2008["p-value"]),
+        "supf_anno": r["anno"], "supf": _num(r["sup-F"], 1), "supf_crit": _num(r["critico 1%"], 1),
+        "eta_prima": _num(e.eta["media prima"], 1), "eta_dopo": _num(e.eta["media dopo"], 1),
+        "eta_t": _num(e.eta["t"], 1), "eta_dec": _num(10 * e.eta_trend.risultato.params["tempo"], 1),
+        "vc_prima": _num(e.eta_vc_tech["media prima"], 1), "vc_dopo": _num(e.eta_vc_tech["media dopo"], 1),
+        "up": righe(e.underpricing), "up_quota": _num(e.underpricing.risultato.params["quota_vc"] / 10, 1),
+        "up_p": _p(e.underpricing_f["p-value"]),
+        "eu_inizio": _pct(eu.iloc[0]), "eu_fine": _pct(eu.iloc[-1]),
+        "eu_a": int(eu.index[0]), "eu_b": int(eu.index[-1]),
+        "us_inizio": _num(us.iloc[0], 1), "us_fine": _num(us.iloc[-1], 1), "us_a": int(us.index[0]),
+        "us_b": int(us.index[-1]),
+        "ipo_picco": int(d.loc[1980:2025, "ipo"].max()), "ipo_anno_picco": int(d.loc[1980:2025, "ipo"].idxmax()),
+        "ipo_ultimi": _num(d.loc[2016:2025, "ipo"].mean(), 0), "ipo_90": _num(d.loc[1990:1999, "ipo"].mean(), 0),
+        "sponsor_90": _pct(d.loc[1990:1999, "quota_sponsor"].mean(), 0),
+        "sponsor_ultimi": _pct(d.loc[2016:2025, "quota_sponsor"].mean(), 0),
+    }
 
 
 def contesto(a: Analisi) -> dict:
@@ -438,23 +588,9 @@ def contesto(a: Analisi) -> dict:
     minimo = a.flussi_fondo["Flusso cumulato"].min()
     anno_target = next((int(k) for k, v in a.piano["Quota NAV"].items() if v >= 0.95 * a.allocazione), None)
 
-    rep = [{"reg": r["Regione"], "fin": r["Finestra"], "mod": r["Modello"], "n": r["Osservazioni"],
-            "pend": _num(r["Pendenza"], 3), "p": _p(r["p-value"]), "r2": _num(r["R²"])}
-           for _, r in a.replica.iterrows()]
-    multiv = {reg: [{"nome": k, "coef": _num(v["Coefficiente"], 3), "t": _num(v["t"]), "p": _p(v["p-value"]),
-                     "sig": v["p-value"] < 0.05} for k, v in m.tabella().iterrows()]
-              for reg, m in a.multivariate.items()}
-    r2 = {reg: _num(m.r2_corretto) for reg, m in a.multivariate.items()}
-    testf = [{"reg": reg, "f": _num(t["F (privato conta)"]), "p": _p(t["p-value (privato conta)"]),
-              "r2_con": _num(t["R² con privato"]), "r2_senza": _num(t["R² senza privato"]),
-              "f2": _num(t["F (effetto cambia dopo il 2008)"]), "p2": _p(t["p-value (effetto cambia)"]),
-              "prima": _num(t["Effetto prima del 2008"], 2, True), "dopo": _num(t["Effetto dopo il 2008"], 2, True),
-              "chow": _num(a.chow[reg]["F di Chow"]), "chow_p": _p(a.chow[reg]["p-value"]),
-              "max": int(a.ricerca[reg]["F di Chow"].idxmax())}
-             for reg, t in a.test_f.items()]
-    eta = [{"reg": reg, "dec": _num(r["Anni in più per decennio"], 1, True),
-            "prima": _num(r["Età media prima del 2008"], 1),
-            "dopo": _num(r["Età media dal 2008"], 1)} for reg, r in a.eta.iterrows()]
+    rep = multiv = r2 = testf = eta = None
+    if a.pannello:
+        rep, multiv, r2, testf, eta = _contesto_pannello(a)
     back = None
     if a.backing is not None:
         back = {
@@ -475,14 +611,14 @@ def contesto(a: Analisi) -> dict:
             "n": len(a.campione_ipo),
         }
 
-    us = a.test_f.get("Stati Uniti", next(iter(a.test_f.values())))
+    e = a.empirico
     kpi = [
         ("Quota dei fondatori dopo la Serie B" if "Serie B" in ct.classi else "Quota dei fondatori", _pct(q_fond, 0)),
         ("Valore First Chicago (post-money)", _eur(a.valore_fc)),
         ("Prob. di perdita con 10 start-up", _pct(p.loc[10, "Prob. di perdere capitale"], 0)),
         ("Prob. di perdita con 50 start-up", _pct(p.loc[50, "Prob. di perdere capitale"], 0)),
         ("Fondo: la J-curve torna positiva", f"anno {pareggio}" if pareggio else "–"),
-        ("Effetto del capitale privato sulle IPO dal 2008", _num(us["Effetto dopo il 2008"], 2, True)),
+        ("Età mediana alla IPO negli USA", f"{_num(e.eta['media prima'], 1)} → {_num(e.eta['media dopo'], 1)} anni"),
     ]
     return dict(
         nome=a.caso["nome"], today=date.today().strftime("%d/%m/%Y"), kpi=kpi, rounds=rounds, libro=libro,
@@ -500,8 +636,9 @@ def contesto(a: Analisi) -> dict:
         piano={"c0": _eur(a.commitment), "pat": _eur(a.patrimonio), "obiettivo": _pct(a.allocazione, 0),
                                  "anno": anno_target,
                                  "impegni": _pct(a.piano["Quota NAV + impegni"].iloc[-1], 0)},
-        replica=rep, multiv=multiv, r2=r2, testf=testf, eta=eta, back=back, demo=a.dati_dimostrativi,
-        periodo=f"{int(a.serie['anno'].min())}-{int(a.serie['anno'].max())}",
+        replica=rep, multiv=multiv, r2=r2, testf=testf, eta=eta, back=back, pannello=a.pannello,
+        periodo=f"{int(a.serie['anno'].min())}-{int(a.serie['anno'].max())}" if a.pannello else "",
+        emp=_contesto_empirico(a),
     )
 
 

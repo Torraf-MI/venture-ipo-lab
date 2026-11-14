@@ -31,7 +31,7 @@ venture-ipo-lab = "venture_ipo_lab.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-venture_ipo_lab = ["templates/*.j2"]
+venture_ipo_lab = ["templates/*.j2", "dati_pubblici/*.csv", "dati_pubblici/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

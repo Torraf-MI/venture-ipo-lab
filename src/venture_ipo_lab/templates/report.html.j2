@@ -149,16 +149,69 @@ pronta per i richiami.</p></div>
 <div class="grafico">{{ grafici.piano | safe }}</div>
 
 <!-- ======================================================================= -->
-<h2>6. IPO e private market: la tesi, replicata e sviluppata</h2>
+<h2>6. IPO e private market: la tesi, replicata e sviluppata con dati pubblici</h2>
 <p>La tesi di laurea magistrale da cui nasce questa sezione (USI, Banking &amp; Finance, 2019) chiedeva se la crescita
 del venture capital e del private equity avesse cambiato il mercato delle IPO, in Europa occidentale e negli Stati
-Uniti. Le regressioni semplici della tesi davano R² bassi su 20 anni e più alti su 10, e la conclusione indicava come
-passo successivo una regressione multivariata con i test F. Questa sezione fa quel passo, sul periodo {{ periodo }}.</p>
-{% if demo %}<div class="esito attenzione"><b>Dati dimostrativi.</b> Le serie e il campione di IPO di questo report
-sono sintetici: servono a mostrare il metodo e non sono risultati sul mercato reale. Con un CSV di dati reali
-(per esempio un export Bloomberg) le stesse analisi girano senza modifiche.</div>{% endif %}
-<div class="grafico">{{ grafici.ipo_privato | safe }}</div>
+Uniti. Le regressioni semplici della tesi davano R² bassi, e la conclusione indicava come passo successivo una
+regressione multivariata con i test F. Questa sezione rifà l'analisi con <b>dati pubblici reali</b> (IPO negli Stati
+Uniti 1980-2025, condizioni di mercato, attività di VC e PE negli Stati Uniti e in Europa 2014-2025; fonti in
+<code>dati_pubblici/FONTI.md</code>) e fa quel passo.</p>
+<div class="grafico">{{ grafici.ipo_usa | safe }}</div>
+<p>Negli anni Novanta gli Stati Uniti avevano in media {{ emp.ipo_90 }} IPO l'anno, nell'ultimo decennio
+{{ emp.ipo_ultimi }}. Nel frattempo la quota di IPO con un investitore finanziario alle spalle (VC, growth o buyout)
+è passata dal {{ emp.sponsor_90 }} al {{ emp.sponsor_ultimi }}.</p>
 
+<h3>Passo 1: le regressioni semplici della tesi</h3>
+<div class="grafico">{{ grafici.tesi_reale | safe }}</div>
+<div class="scroll"><table><tr><th>Regressione</th><th>Periodo</th><th>Oss.</th><th>Pendenza</th><th>p-value</th><th>R²</th></tr>
+{% for r in emp.tesi %}<tr><td>{{ r.nome }}</td><td>{{ r.periodo }}</td><td>{{ r.n }}</td><td>{{ r.coef }}</td><td>{{ r.p }}</td><td>{{ r.r2 }}</td></tr>{% endfor %}</table></div>
+<p>Come nella tesi, l'attività di VC e PE da sola spiega poco il numero di IPO: R² tra {{ emp.r2_min }} e
+{{ emp.r2_max }}. Una regressione con una sola variabile mescola però gli effetti del mercato: servono i controlli.</p>
+
+<h3>Passo 2: la regressione multivariata e i test F</h3>
+<p>Variabile dipendente: logaritmo del numero di IPO negli Stati Uniti, {{ emp.multi_periodo }}
+({{ emp.multi_n }} anni). Errori standard di Newey-West. R² {{ emp.multi_r2 }}.</p>
+<table><tr><th>Variabile</th><th>Coeff.</th><th>t</th><th>p-value</th></tr>
+{% for r in emp.multi %}<tr{% if r.sig %} class="forte"{% endif %}><td>{{ r.nome }}</td><td>{{ r.coef }}</td><td>{{ r.t }}</td><td>{{ r.p }}</td></tr>{% endfor %}</table>
+<p>Il test F sui controlli di mercato è netto (F = {{ emp.f_contr }}, p {{ emp.p_contr }}): il numero di IPO dipende
+soprattutto dalla volatilità e da come è andata la borsa l'anno prima. La quota di IPO con VC o PE, a parità di
+mercato, non è significativa (F = {{ emp.f_priv }}, p = {{ emp.p_priv }}): <b>i fondi non portano più aziende in
+borsa, cambiano chi ci arriva</b>.</p>
+
+<h3>Passo 3: la rottura del 2008</h3>
+<p>Il test di Chow al 2008 rifiuta la stabilità dei coefficienti (F = {{ emp.chow }}, p {{ emp.chow_p }}). Cercando la
+data senza fissarla (test sup-F di Quandt e Andrews) il massimo cade nel {{ emp.supf_anno }}, con F = {{ emp.supf }}
+contro un valore critico all'1% di {{ emp.supf_crit }}.</p>
+<div class="grafico">{{ grafici.supf | safe }}</div>
+
+<h3>Passo 4: le aziende restano private più a lungo?</h3>
+<div class="grafico">{{ grafici.eta_reale | safe }}</div>
+<p>Sì. L'età mediana alla quotazione passa da {{ emp.eta_prima }} anni nel 1980-2000 a {{ emp.eta_dopo }} anni nel
+2001-2025 (t di Welch {{ emp.eta_t }}), e la tendenza al netto della bolla del 1999-2000 è di {{ emp.eta_dec }} anni
+in più per decennio. Per le IPO tecnologiche con VC: da {{ emp.vc_prima }} a {{ emp.vc_dopo }} anni.</p>
+
+<h3>Passo 5: underpricing e venture capital</h3>
+<div class="grafico">{{ grafici.underpricing_reale | safe }}</div>
+<table><tr><th>Rendimento medio del primo giorno (%)</th><th>Coeff.</th><th>t</th><th>p-value</th></tr>
+{% for r in emp.up %}<tr{% if r.sig %} class="forte"{% endif %}><td>{{ r.nome }}</td><td>{{ r.coef }}</td><td>{{ r.t }}</td><td>{{ r.p }}</td></tr>{% endfor %}</table>
+<p>Negli anni in cui le IPO con VC sono di più, il primo giorno sale di più: 10 punti di quota VC in più valgono
+circa {{ emp.up_quota }} punti di rendimento del primo giorno (p = {{ emp.up_p }}), a parità di valutazioni,
+volatilità e bolla.</p>
+
+<h3>Passo 6: la borsa come via d'uscita</h3>
+<div class="grafico">{{ grafici.exit_borsa | safe }}</div>
+<p>In Europa le exit di private equity avvenute con una IPO scendono dal {{ emp.eu_inizio }} ({{ emp.eu_a }}) al
+{{ emp.eu_fine }} ({{ emp.eu_b }}). Negli Stati Uniti le IPO con VC ogni 1.000 round di venture capital passano da
+{{ emp.us_inizio }} ({{ emp.us_a }}) a {{ emp.us_fine }} ({{ emp.us_b }}). Il capitale privato non ha fermato le IPO,
+ma le aziende ci arrivano più tardi e sempre più spesso escono in altro modo.</p>
+<p class="sub">Limiti: serie annuali e brevi (35 anni per la multivariata, 11 per il private market), dati europei
+disponibili solo in forma aggregata. I risultati descrivono associazioni, non nessi causali. Il segno positivo del Treasury riflette soprattutto la tendenza
+comune: dagli anni Novanta sono scesi sia i tassi sia il numero di IPO.</p>
+
+{% if pannello %}
+<h2>7. Analisi su dati propri ({{ periodo }})</h2>
+<p>Le stesse analisi sulle serie caricate dall'utente (per esempio un export Bloomberg a più regioni, come nella
+tesi).</p>
 <h3>Passo 1: la replica delle regressioni semplici</h3>
 <div class="grafico">{{ grafici.replica | safe }}</div>
 <div class="scroll"><table><tr><th>Regione</th><th>Finestra</th><th>Modello</th><th>Oss.</th><th>Pendenza</th><th>p-value</th><th>R²</th></tr>
@@ -189,8 +242,10 @@ circa il 2,5% di IPO in più. "Rottura più forte" è l'anno con la F di Chow pi
 <div><table><tr><th>Regione</th><th>Anni in più per decennio</th><th>Età media fino al 2007</th><th>Età media dal 2008</th></tr>
 {% for r in eta %}<tr><td>{{ r.reg }}</td><td>{{ r.dec }}</td><td>{{ r.prima }}</td><td>{{ r.dopo }}</td></tr>{% endfor %}</table></div>
 
+{% endif %}
+
 {% if back %}
-<h3>Passo 5: le IPO con VC o PE alle spalle sono diverse?</h3>
+<h3>Campione di singole IPO: con VC o PE alle spalle sono diverse?</h3>
 <p>Campione di {{ back.n }} IPO. L'<b>underpricing</b> è il rialzo del primo giorno rispetto al prezzo di offerta:
 denaro lasciato sul tavolo dalla società. Il <b>rendimento a 3 anni</b> è misurato rispetto al mercato (buy-and-hold).</p>
 <div class="grafico">{{ grafici.backing | safe }}</div>
@@ -211,11 +266,12 @@ denaro lasciato sul tavolo dalla società. Il <b>rendimento a 3 anni</b> è misu
 <p>Cap table fully diluted, con option pool considerato interamente assegnato. Waterfall con preference per
 seniority, pari passu a parità di seniority e scelta di conversione in equilibrio per ogni classe. Rendimenti delle
 singole start-up: mistura di una Beta per le perdite e di una Pareto troncata per i successi, con parametri
-modificabili. Flussi del fondo: modello di Takahashi e Alexander (2002); PME di Kaplan e Schoar (2005). Regressioni
-OLS con errori di Newey-West (2 ritardi) per le serie annuali ed errori robusti HC1 per il campione di IPO; test di
-Chow con i soli controlli e il capitale privato.</p>
-{% if demo %}<p><b>Tutti i dati di questo report sono sintetici e dimostrativi: la start-up, gli investitori, le
-serie storiche e le IPO sono inventati.</b></p>{% endif %}
+modificabili. Flussi del fondo: modello di Takahashi e Alexander (2002); PME di Kaplan e Schoar (2005). Serie annuali:
+OLS con errori di Newey-West, test F robusti, test di Chow al 2008 e sup-F di Quandt e Andrews con trimming del 15%
+e valori critici di Andrews (1993). Campione di singole IPO, se caricato: errori robusti HC1 ed effetti fissi per
+anno.</p>
+<p>La start-up, gli investitori e i loro importi sono inventati. Le serie della sezione 6 sono dati pubblici reali,
+citati con la fonte in <code>dati_pubblici/FONTI.md</code>.</p>
 <p>Questo documento ha scopo illustrativo e non costituisce consulenza finanziaria o raccomandazione di
 investimento. I risultati simulati non sono indicativi di quelli futuri.</p>
 </div>
